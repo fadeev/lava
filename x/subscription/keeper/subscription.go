@@ -74,15 +74,6 @@ func endOfMonth(date time.Time) time.Time {
 	return date.AddDate(0, 1, -date.Day())
 }
 
-// isLeapYear returns true if the year in the date is a leap year (assume UTC)
-// (https://stackoverflow.com/questions/725098/leap-year-calculation)
-func isLeapYear(date time.Time) bool {
-	year := date.Year()
-	// Leap year occurs every 4 years; but every 100 years it is skipped;
-	// except that every every 400 years it is kept.
-	return year%400 == 0 || (year%4 == 0 && year%100 != 0)
-}
-
 // nextMonth returns the date of the same day next month (assumes UTC),
 // adjusting for end-of-months differences if needed.
 func nextMonth(date time.Time) time.Time {
@@ -92,7 +83,7 @@ func nextMonth(date time.Time) time.Time {
 	//   AddDate normalizes its result in the same way that Date does, so, for
 	//   example, adding one month to October 31 yields December 1, the normalized
 	//   form for November 31.
-	//
+
 	// If we are at end of this month, then "manually" select end of next month;
 	// This properly handles transitions from short to longer months.
 
@@ -123,23 +114,6 @@ func nextMonth(date time.Time) time.Time {
 			date.Nanosecond(),
 			time.UTC)
 		return endOfMonth(next)
-	}
-
-	return next
-}
-
-// nextYear returns the date of the same day next year (assumes UTC),
-// properly handling leap year variations on February.
-func nextYear(date time.Time) time.Time {
-	next := date.AddDate(1, 0, 0)
-
-	if date.Month() == 2 {
-		if date.Day() == 29 {
-			next = date.AddDate(1, 0, -1)
-		}
-		if date.Day() == 28 && isLeapYear(next) {
-			next = date.AddDate(1, 0, 1)
-		}
 	}
 
 	return next
@@ -199,46 +173,37 @@ func (k Keeper) CreateSubscription(
 		return utils.LavaError(ctx, logger, "CreateSubscription", details, "failed to create default project")
 	}
 
-	price := plan.GetPrice()
-
-	// use current block's timestamp for subscription start-time
-	timestamp := ctx.BlockTime()
-	expiry := timestamp
-
-	if duration < 12 {
-		price.Amount = price.Amount.MulRaw(int64(duration))
-		for i := 0; i < int(duration); i++ {
-			expiry = nextMonth(expiry)
-		}
+	sub := types.Subscription{
+		Creator:       creator,
+		Consumer:      consumer,
+		Block:         block,
+		PlanIndex:     planIndex,
+		PlanBlock:     plan.Block,
+		DurationTotal: duration,
+		MonthCuTotal:  plan.GetComputeUnits(),
 	}
 
-	if duration == 12 {
-		// extend the duration to 1 year, and price pro-rata
-		expiry = nextYear(timestamp)
-		price.Amount = price.Amount.MulRaw(12)
+	// use current block's timestamp for subscription start-time
+	expiry := nextMonth(ctx.BlockTime().UTC())
 
-		// adjust cost if discount given
+	sub.MonthExpiryTime = uint64(expiry.Unix())
+	sub.MonthCuLeft = plan.GetComputeUnits()
+	sub.DurationLeft = duration
+
+	if err := sub.ValidateSubscription(); err != nil {
+		return utils.LavaError(ctx, logger, "CreateSub", nil, err.Error())
+	}
+
+	price := plan.GetPrice()
+	price.Amount = price.Amount.MulRaw(int64(duration))
+
+	if duration >= 12 {
+		// adjust price if plan gives discount
 		discount := plan.GetAnnualDiscountPercentage()
 		if discount > 0 {
 			factor := int64(100 - discount)
 			price.Amount = price.Amount.MulRaw(factor).QuoRaw(100)
 		}
-	}
-
-	sub := types.Subscription{
-		Creator:     creator,
-		Consumer:    consumer,
-		Block:       block,
-		PlanIndex:   planIndex,
-		PlanBlock:   plan.Block,
-		Duration:    duration,
-		ExpiryTime:  uint64(expiry.Unix()),
-		RemainingCU: plan.GetComputeUnits(),
-		UsedCU:      0,
-	}
-
-	if err := sub.ValidateSubscription(); err != nil {
-		return utils.LavaError(ctx, logger, "CreateSub", nil, err.Error())
 	}
 
 	if k.bankKeeper.GetBalance(ctx, creatorAcct, epochstoragetypes.TokenDenom).IsLT(price) {
