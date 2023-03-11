@@ -22,31 +22,27 @@ func (k Keeper) AddPlan(ctx sdk.Context, planToAdd types.Plan) error {
 	return nil
 }
 
-// GetPlan gets a plan from the KVStore. It increases the plan's refCount by 1
+// GetPlan gets the latest plan from the KVStore and increments its refcount
 func (k Keeper) GetPlan(ctx sdk.Context, index string) (val types.Plan, found bool) {
 	var plan types.Plan
-	err, _ := k.plansFs.GetEntry(ctx, index, &plan)
-	if err != nil {
+	if found := k.plansFs.GetEntry(ctx, index, &plan); !found {
 		return types.Plan{}, false
 	}
 	return plan, true
 }
 
-// FindPlan gets a plan from the KVStore. It does nothing to the plan's refCount
+// FindPlan gets a plan with nearest-smaller block (without changing its refcount)
 func (k Keeper) FindPlan(ctx sdk.Context, index string, block uint64) (val types.Plan, found bool) {
 	var plan types.Plan
-	err, _ := k.plansFs.FindEntry(ctx, index, block, &plan)
-	if err != nil {
+	if found := k.plansFs.FindEntry(ctx, index, block, &plan); !found {
 		return types.Plan{}, false
 	}
 	return plan, true
 }
 
-// PutPlan gets a plan from the KVStore. It decreases the plan's refCount by 1
-func (k Keeper) PutPlan(ctx sdk.Context, index string, block uint64) bool {
-	var plan types.Plan
-	_, found := k.plansFs.PutEntry(ctx, index, block, &plan)
-	return found
+// PutPlan finds a plan with nearest-smaller block and decrements its refcount
+func (k Keeper) PutPlan(ctx sdk.Context, index string, block uint64) {
+	k.plansFs.PutEntry(ctx, index, block)
 }
 
 // GetAllPlanIndices gets from the KVStore all the plans' indices

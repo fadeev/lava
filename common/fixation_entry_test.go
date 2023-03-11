@@ -100,35 +100,23 @@ func testWithTemplate(t *testing.T, playbook []template, countObj int, countVS i
 				require.NotNil(t, err, what)
 			}
 		case "find":
-			err, found := vs[play.store].FindEntry(ctx, play.index, block, &dummy)
+			found := vs[play.store].FindEntry(ctx, play.index, block, &dummy)
 			if !play.fail {
-				require.Nil(t, err, what)
 				require.True(t, found, what)
 				require.Equal(t, dummy, coins[play.coin], what)
 			} else {
-				require.NotNil(t, err, what)
 				require.False(t, found, what)
 			}
 		case "get":
-			err, found := vs[play.store].GetEntry(ctx, play.index, &dummy)
+			found := vs[play.store].GetEntry(ctx, play.index, &dummy)
 			if !play.fail {
-				require.Nil(t, err, what)
 				require.True(t, found, what)
 				require.Equal(t, dummy, coins[play.coin], what)
 			} else {
-				require.NotNil(t, err, what)
 				require.False(t, found, what)
 			}
 		case "put":
-			err, found := vs[play.store].PutEntry(ctx, play.index, block, &dummy)
-			if !play.fail {
-				require.Nil(t, err, what)
-				require.True(t, found, what)
-				require.Equal(t, dummy, coins[play.coin], what)
-			} else {
-				require.NotNil(t, err, what)
-				require.False(t, found, what)
-			}
+			vs[play.store].PutEntry(ctx, play.index, block)
 		case "block":
 			ctx = ctx.WithBlockHeight(ctx.BlockHeight() + play.count)
 		case "getall":
